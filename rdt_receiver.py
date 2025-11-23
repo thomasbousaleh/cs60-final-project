@@ -40,7 +40,8 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
     total_rcvd = 0
     total_delivered = 0
     total_corrupt = 0
-    total_dups = 0
+    total_dups = 0           # seq < expected_seq (retransmissions already delivered)
+    total_out_of_order = 0   # seq > expected_seq (arrived too early)
 
     done = False
 
@@ -80,7 +81,7 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
                     print(f"[RECV] Sent ACK for seq={seq}")
 
                 elif seq < expected_seq:
-                    # DUPLICATE packet
+                    # DUPLICATE packet (retransmission of data we've already delivered)
                     total_dups += 1
                     print(f"[RECV] Duplicate seq={seq}, expected={expected_seq}")
 
@@ -90,6 +91,7 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
 
                 else:
                     # seq > expected_seq = OUT OF ORDER
+                    total_out_of_order += 1
                     print(f"[RECV] Out-of-order seq={seq}, expected={expected_seq}. Discard.")
 
                     if last_acked is not None:
@@ -108,10 +110,12 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
     sock.close()
 
     print("\n[RECV] Receiver stats:")
-    print(f"  Total packets received:   {total_rcvd}")
-    print(f"  Delivered in-order:       {total_delivered}")
-    print(f"  Corrupt packets:          {total_corrupt}")
-    print(f"  Duplicate packets:        {total_dups}")
+    print(f"  Total packets received:        {total_rcvd}")
+    print(f"  Delivered in-order:            {total_delivered}")
+    print(f"  Corrupt packets:               {total_corrupt}")
+    print(f"  Duplicate packets (retrans):   {total_dups}")
+    print(f"  Out-of-order packets:          {total_out_of_order}")
+    print(f"  Dup + Out-of-order (est. retransmissions seen): {total_dups + total_out_of_order}")
 
 
 def main():

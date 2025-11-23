@@ -1,4 +1,3 @@
-# rdt_sender.py
 import sys
 import socket
 import time
@@ -19,23 +18,29 @@ from common import (
 WINDOW_SIZE = 10        # sliding window size (you can tweak)
 TIMEOUT_SEC = 0.2       # retransmission timeout (seconds)
 RECV_BUFFER = 4096      # recv buffer size (bytes)
-CORRUPT_PROB = 0.05      # probability of packet corruption
+CORRUPT_PROB = 0.05     # probability of packet corruption
 
 TEST_FORCE_DUPES = True
 
 
-def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float):
+def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float) -> bool:
     """
     Simulate packet loss and corruption.
     loss_prob: probability in [0,1] that the packet is DROPPED.
     CORRUPT_PROB: global prob that a packet is bit-flipped after checksum.
+
+    Returns:
+        True if this packet was actually corrupted (bit-flipped),
+        False otherwise (either sent clean or dropped).
     """
     import random
 
     # Simulate loss
     if random.random() < loss_prob:
         print("[SENDER] *** Simulated DROP of packet ***")
-        return
+        return False  # dropped, not corrupted
+
+    corrupted = False
 
     # Simulate corruption: flip one random bit in the packet
     if random.random() < CORRUPT_PROB:
@@ -44,9 +49,11 @@ def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float):
         bit = 1 << random.randrange(8)
         ba[idx] ^= bit
         packet = bytes(ba)
+        corrupted = True
         print(f"[SENDER] *** Simulated CORRUPTION at byte {idx}, bit {bit} ***")
 
     sock.sendto(packet, addr)
+    return corrupted
 
 
 def load_file_chunks(filename: str) -> List[bytes]:
@@ -81,12 +88,14 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
     total_sent = 0
     total_retrans = 0
     total_acks = 0
+    total_corrupted = 0   # <-- NEW: how many packets we actually corrupted
 
     # Go-Back-N main loop
     while base < num_packets:
         # Fill the window
         while next_seq < num_packets and next_seq < base + WINDOW_SIZE:
-            maybe_send(sock, packets[next_seq], addr, loss_prob)
+            if maybe_send(sock, packets[next_seq], addr, loss_prob):
+                total_corrupted += 1
             total_sent += 1
             print(f"[SENDER] Sent packet seq={next_seq}")
             if base == next_seq:
@@ -113,12 +122,13 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
                     else:
                         timer_start = time.time()
 
-                    # --- TEST HOOK: force a duplicate sometimes ---
+                    # --- TEST HOOK: force a duplicate ---
                     if TEST_FORCE_DUPES and 0 <= ack_seq < num_packets:
                         dup_packet = packets[ack_seq]
+                        # Note: test duplicate bypasses maybe_send, so never corrupted
                         sock.sendto(dup_packet, addr)
-                        total_sent += 1          # <- add this
-                        total_retrans += 1       # optional, if you want them counted as retrans
+                        total_sent += 1
+                        total_retrans += 1
                         print(f"[TEST] Forced DUPLICATE send of seq={ack_seq}")
         except socket.timeout:
             pass  # no ACKs this poll
@@ -128,7 +138,8 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
             print(f"[SENDER] TIMEOUT: resending window base={base}, next_seq={next_seq}")
             # Retransmit all unACKed packets
             for seq in range(base, next_seq):
-                maybe_send(sock, packets[seq], addr, loss_prob)
+                if maybe_send(sock, packets[seq], addr, loss_prob):
+                    total_corrupted += 1
                 total_sent += 1
                 total_retrans += 1
                 print(f"[SENDER] Retransmitted seq={seq}")
@@ -141,9 +152,12 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
     fin_retries = 0
 
     while not fin_acked and fin_retries < 10:
-        maybe_send(sock, fin_packet, addr, loss_prob)
+        if maybe_send(sock, fin_packet, addr, loss_prob):
+            total_corrupted += 1
         total_sent += 1           # count FIN as a sent packet
         fin_retries += 1
+        # log every FIN attempt
+        print(f"[SENDER] Sent FIN attempt #{fin_retries}")
         try:
             raw, _ = sock.recvfrom(RECV_BUFFER)
             try:
@@ -160,10 +174,11 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
     sock.close()
 
     print("\n[SENDER] Transmission stats:")
-    print(f"  Total packets sent:        {total_sent}")
-    print(f"  Total retransmissions:     {total_retrans}")
-    print(f"  Unique data packets:       {num_packets}")
-    print(f"  ACKs received:             {total_acks}")
+    print(f"  Total packets sent:                {total_sent}")
+    print(f"  Total retransmissions (data only): {total_retrans}")
+    print(f"  Unique data packets:               {num_packets}")
+    print(f"  ACKs received:                     {total_acks}")
+    print(f"  Packets with simulated bit flips:  {total_corrupted}")
 
 
 def main():
