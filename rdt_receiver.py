@@ -71,24 +71,27 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
                     # In-order packet
                     f_out.write(payload)
                     total_delivered += 1
-
                     last_acked = seq
                     expected_seq += 1
 
+                    # Always send ACK for in-order packet
                     ack_pkt = build_packet(seq, FLAG_ACK, b"")
                     maybe_send(sock, ack_pkt, sender_addr, loss_prob, f"ACK(seq={seq})")
                     print(f"[RECV] Sent ACK for seq={seq}")
 
                 elif seq < expected_seq:
-                    # Duplicate
+                    # DUPLICATE packet
                     total_dups += 1
                     print(f"[RECV] Duplicate seq={seq}, expected={expected_seq}")
+
                     if last_acked is not None:
                         ack_pkt = build_packet(last_acked, FLAG_ACK, b"")
                         maybe_send(sock, ack_pkt, sender_addr, loss_prob, f"ACK(dup seq={last_acked})")
+
                 else:
-                    # seq > expected_seq -> out-of-order for Go-Back-N
+                    # seq > expected_seq = OUT OF ORDER
                     print(f"[RECV] Out-of-order seq={seq}, expected={expected_seq}. Discard.")
+
                     if last_acked is not None:
                         ack_pkt = build_packet(last_acked, FLAG_ACK, b"")
                         maybe_send(sock, ack_pkt, sender_addr, loss_prob, f"ACK(out-of-order seq={last_acked})")

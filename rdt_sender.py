@@ -19,17 +19,33 @@ from common import (
 WINDOW_SIZE = 10        # sliding window size (you can tweak)
 TIMEOUT_SEC = 0.2       # retransmission timeout (seconds)
 RECV_BUFFER = 4096      # recv buffer size (bytes)
+CORRUPT_PROB = 0.05      # probability of packet corruption
+
+TEST_FORCE_DUPES = True
 
 
 def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float):
     """
-    Simulate packet loss by randomly dropping packets instead of sending.
+    Simulate packet loss and corruption.
     loss_prob: probability in [0,1] that the packet is DROPPED.
+    CORRUPT_PROB: global prob that a packet is bit-flipped after checksum.
     """
+    import random
+
+    # Simulate loss
     if random.random() < loss_prob:
-        # simulate loss: do not send
         print("[SENDER] *** Simulated DROP of packet ***")
         return
+
+    # Simulate corruption: flip one random bit in the packet
+    if random.random() < CORRUPT_PROB:
+        ba = bytearray(packet)
+        idx = random.randrange(len(ba))
+        bit = 1 << random.randrange(8)
+        ba[idx] ^= bit
+        packet = bytes(ba)
+        print(f"[SENDER] *** Simulated CORRUPTION at byte {idx}, bit {bit} ***")
+
     sock.sendto(packet, addr)
 
 
@@ -90,12 +106,20 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
                 total_acks += 1
                 print(f"[SENDER] Received ACK for seq={ack_seq}")
                 if ack_seq >= base:
+                    # --- normal window update ---
                     base = ack_seq + 1
                     if base == next_seq:
-                        # window empty
                         timer_start = None
                     else:
                         timer_start = time.time()
+
+                    # --- TEST HOOK: force a duplicate sometimes ---
+                    if TEST_FORCE_DUPES and 0 <= ack_seq < num_packets:
+                        dup_packet = packets[ack_seq]
+                        sock.sendto(dup_packet, addr)
+                        total_sent += 1          # <- add this
+                        total_retrans += 1       # optional, if you want them counted as retrans
+                        print(f"[TEST] Forced DUPLICATE send of seq={ack_seq}")
         except socket.timeout:
             pass  # no ACKs this poll
 
