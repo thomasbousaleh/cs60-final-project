@@ -1,4 +1,14 @@
 # common.py
+
+# CS60 25F
+# Thomas Bousaleh and Edward Kim
+# Final Project
+# Citations: Class notes slideshows generally, Lab 4 instructions and work,
+# as well as an LLM, ChatGPT 5.1
+
+# Shared packet format and checksum utilities for our reliable UDP protocol;
+# Defines header layout, flags, max payload size, packet buider, and parser.
+
 import struct
 from typing import Tuple
 
@@ -12,7 +22,7 @@ FLAG_ACK     = 1
 FLAG_FIN     = 2
 FLAG_FIN_ACK = 3
 
-# MTU-ish: 1500 - IP(20) - UDP(8) ≈ 1472 bytes
+# MTU sort of: 1500 - IP(20) - UDP(8) ≈ 1472 bytes
 MAX_UDP_PAYLOAD = 1472
 MAX_DATA_SIZE = MAX_UDP_PAYLOAD - HEADER_SIZE
 
@@ -37,7 +47,7 @@ def _checksum16(data: bytes) -> int:
 def build_packet(seq: int, flags: int, payload: bytes) -> bytes:
     """
     Build a packet with header + payload.
-    seq: sequence number (or ACK number for ACK packets)
+    seq: sequennee number (or ACK number for ACK packets)
     flags: one of FLAG_DATA/FLAG_ACK/FLAG_FIN/FLAG_FIN_ACK
     payload: bytes payload (empty for ACKs, FINs, etc.)
     """
@@ -49,7 +59,7 @@ def build_packet(seq: int, flags: int, payload: bytes) -> bytes:
 
 def parse_packet(raw: bytes) -> Tuple[int, int, bytes]:
     """
-    Parse a raw UDP payload into (seq, flags, payload).
+    Parse a raw UDP payoad into (seq, flags, payload).
     Raises ValueError if checksum is invalid or packet too short.
     """
     if len(raw) < HEADER_SIZE:

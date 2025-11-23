@@ -1,4 +1,16 @@
 # rdt_receiver.py
+
+# CS60 25F
+# Thomas Bousaleh and Edward Kim
+# Final Project
+# Citations: Class notes slideshows generally, Lab 4 instructions and work,
+# as well as an LLM, ChatGPT 5.1
+
+# Reliable UDP Receiver
+# Receive DATA packets, validates checksum, enforces in-order delivery,
+# handles duplicates/out-of-order packets, sends ACKs, and respods to FIN
+# to complete reliable UDP file transfer
+
 import sys
 import socket
 import random
@@ -40,7 +52,7 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
     total_rcvd = 0
     total_delivered = 0
     total_corrupt = 0
-    total_dups = 0           # seq < expected_seq (retransmissions already delivered)
+    total_dups = 0           # seq < expected_seq (retrnsmissions already delivered)
     total_out_of_order = 0   # seq > expected_seq (arrived too early)
 
     done = False
@@ -59,7 +71,7 @@ def receiver(listen_port: int, output_file: str, loss_prob: float):
             except ValueError as e:
                 print(f"[RECV] Corrupt packet: {e}")
                 total_corrupt += 1
-                # Can't ACK what we don't know, but we can re-ACK last good packet
+                # Cantnt ACK what we don't know, but we can re-ACK last good packet
                 if last_acked is not None:
                     ack_pkt = build_packet(last_acked, FLAG_ACK, b"")
                     maybe_send(sock, ack_pkt, sender_addr, loss_prob, "ACK(re-ACK)")

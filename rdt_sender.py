@@ -1,7 +1,21 @@
+# rdt_sender.py
+
+# CS60 25F
+# Thomas Bousaleh and Edward Kim
+# Final Project
+# Citations: Class notes slideshows generally, Lab 4 instructions and work,
+# as well as an LLM, ChatGPT 5.1
+
+# Reliable UDP Sender (Go-Back-N)
+# Implements sequencing, ACK handling, timeouts, retransmissions, checksums,
+# optional corruption/loss simlation, and FIN/FIN-ACK shutdown for reliable
+# file transfer over UDP (creating our RDT protocol).
+
 import sys
 import socket
 import time
 import random
+import os
 from typing import List
 
 from common import (
@@ -18,8 +32,9 @@ from common import (
 WINDOW_SIZE = 10        # sliding window size (you can tweak)
 TIMEOUT_SEC = 0.2       # retransmission timeout (seconds)
 RECV_BUFFER = 4096      # recv buffer size (bytes)
-CORRUPT_PROB = 0.05     # probability of packet corruption
+CORRUPT_PROB = 0.05     # probability of simulated packet corruption
 
+# Meant to test duplicate handling; set to True to enable
 TEST_FORCE_DUPES = True
 
 
@@ -27,7 +42,7 @@ def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float) -> bo
     """
     Simulate packet loss and corruption.
     loss_prob: probability in [0,1] that the packet is DROPPED.
-    CORRUPT_PROB: global prob that a packet is bit-flipped after checksum.
+    CORRUPT_PROB: globl prob that a packet is bit-flipped after checksum.
 
     Returns:
         True if this packet was actually corrupted (bit-flipped),
@@ -57,7 +72,7 @@ def maybe_send(sock: socket.socket, packet: bytes, addr, loss_prob: float) -> bo
 
 
 def load_file_chunks(filename: str) -> List[bytes]:
-    """Read file and split into <= MAX_DATA_SIZE chunks."""
+    """Read file and spilt into <= MAX_DATA_SIZE chunks."""
     chunks = []
     with open(filename, "rb") as f:
         while True:
@@ -71,11 +86,13 @@ def load_file_chunks(filename: str) -> List[bytes]:
 def sender(host: str, port: int, filename: str, loss_prob: float):
     addr = (host, port)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0.01)  # short poll timeout for ACKs
+    sock.settimeout(0.01)  # short poll timeoit for ACKs
 
     data_chunks = load_file_chunks(filename)
     num_packets = len(data_chunks)
     print(f"[SENDER] Loaded {num_packets} data packets from {filename}")
+
+    file_size = os.path.getsize(filename) 
 
     # Pre-build all data packets with sequence numbers 0..num_packets-1
     packets = [build_packet(i, FLAG_DATA, data_chunks[i]) for i in range(num_packets)]
@@ -88,7 +105,9 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
     total_sent = 0
     total_retrans = 0
     total_acks = 0
-    total_corrupted = 0   # <-- NEW: how many packets we actually corrupted
+    total_corrupted = 0   # how many packets we actually corrupted
+
+    start_time = time.time()
 
     # Go-Back-N main loop
     while base < num_packets:
@@ -171,6 +190,9 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
         except socket.timeout:
             print("[SENDER] No FIN-ACK, retrying FIN...")
 
+    end_time = time.time()
+    elapsed = end_time - start_time
+
     sock.close()
 
     print("\n[SENDER] Transmission stats:")
@@ -179,11 +201,16 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
     print(f"  Unique data packets:               {num_packets}")
     print(f"  ACKs received:                     {total_acks}")
     print(f"  Packets with simulated bit flips:  {total_corrupted}")
+    print(f"  Elapsed time (s):                  {elapsed:.6f}")
+    if elapsed > 0:
+        mbps = (file_size * 8) / (elapsed * 1_000_000)
+        print(f"  Throughput:                        {mbps:.3f} Mbit/s")
 
 
 def main():
     if len(sys.argv) < 4:
         print("Usage: python rdt_sender.py <receiver_host> <receiver_port> <input_file> [loss_prob]")
+        # loss_prob is simulated packet loss probability (default 0.0)
         print("Example: python rdt_sender.py 127.0.0.1 9000 input.bin 0.1")
         sys.exit(1)
 
