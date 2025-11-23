@@ -125,7 +125,7 @@ def sender(host: str, port: int, filename: str, loss_prob: float):
                     # --- TEST HOOK: force a duplicate ---
                     if TEST_FORCE_DUPES and 0 <= ack_seq < num_packets:
                         dup_packet = packets[ack_seq]
-                        # Note: test duplicate bypasses maybe_send, so never corrupted
+                        # Important Note: test duplicate bypasses maybe_send, so never corrupted
                         sock.sendto(dup_packet, addr)
                         total_sent += 1
                         total_retrans += 1
