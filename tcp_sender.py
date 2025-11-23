@@ -15,10 +15,6 @@ import socket
 import time
 import os
 
-# Important Note: 
-# This is a Quick TCP baseline script used only for performance comparison with our UDP RDT.
-# Not part of the main project; just raw TCP send/receive for our reference.
-
 def tcp_sender(host: str, port: int, filename: str):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
